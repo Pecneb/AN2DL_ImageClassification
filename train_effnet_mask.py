@@ -23,7 +23,13 @@ else:
 
 # --- Dataset ---
 class MaskedImageDataset(Dataset):
-    def __init__(self, df, img_dir, mask_dir, transform=None):
+    def __init__(
+        self,
+        df,
+        img_dir,
+        mask_dir,
+        transform=None,
+    ):
         self.df = df
         self.img_dir = img_dir
         self.mask_dir = mask_dir
@@ -48,6 +54,7 @@ class MaskedImageDataset(Dataset):
         mask = np.array(mask)
         mask = np.expand_dims(mask, axis=-1)
         x = np.concatenate([img, mask], axis=-1)  # shape: H x W x 4
+
         if self.transform:
             x = self.transform(x)
         y = self.class_numbers[row["label"]]
@@ -225,8 +232,18 @@ def run_cv(
                 T.Resize((img_size, img_size)),
             ]
         )
-        train_ds = MaskedImageDataset(train_df, img_dir, mask_dir, transform)
-        val_ds = MaskedImageDataset(val_df, img_dir, mask_dir, transform)
+        train_ds = MaskedImageDataset(
+            train_df,
+            img_dir,
+            mask_dir,
+            transform=transform,
+        )
+        val_ds = MaskedImageDataset(
+            val_df,
+            img_dir,
+            mask_dir,
+            transform=transform,
+        )
         train_loader = DataLoader(
             train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers
         )
@@ -296,8 +313,18 @@ def run_single_split(
         ]
     )
 
-    train_ds = MaskedImageDataset(train_df, img_dir, mask_dir, transform)
-    val_ds = MaskedImageDataset(val_df, img_dir, mask_dir, transform)
+    train_ds = MaskedImageDataset(
+        train_df,
+        img_dir,
+        mask_dir,
+        transform=transform,
+    )
+    val_ds = MaskedImageDataset(
+        val_df,
+        img_dir,
+        mask_dir,
+        transform=transform,
+    )
 
     train_loader = DataLoader(
         train_ds,

@@ -33,10 +33,22 @@ class TestMaskedImageDataset(Dataset):
         img = Image.open(img_path).convert("RGB")
         mask = Image.open(mask_path).convert("L")
 
-        img = np.array(img)
-        mask = np.array(mask)
-        mask = np.expand_dims(mask, axis=-1)
-        x = np.concatenate([img, mask], axis=-1)
+        img = np.array(img).astype(np.float32)
+        mask = np.array(mask).astype(np.float32)
+
+        # Crop to mask bounding box (same as training)
+        if mask.max() > 0:
+            ys, xs = np.where(mask > 0)
+            y_min, y_max = ys.min(), ys.max()
+            x_min, x_max = xs.min(), xs.max()
+            img = img[y_min : y_max + 1, x_min : x_max + 1, :]
+            mask = mask[y_min : y_max + 1, x_min : x_max + 1]
+
+        # Normalize mask to [0, 1], broadcast to 3 channels, and multiply
+        if mask.max() > 0:
+            mask = mask / 255.0
+        mask_3ch = np.repeat(mask[..., None], 3, axis=-1)
+        x = img * mask_3ch
 
         if self.transform:
             x = self.transform(x)
