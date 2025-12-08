@@ -7,7 +7,7 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
-from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
 
 
 class TestMaskedImageDataset(Dataset):
@@ -33,22 +33,13 @@ class TestMaskedImageDataset(Dataset):
         img = Image.open(img_path).convert("RGB")
         mask = Image.open(mask_path).convert("L")
 
-        img = np.array(img).astype(np.float32)
-        mask = np.array(mask).astype(np.float32)
+        img = np.array(img)
+        mask = np.array(mask)
+        mask = np.expand_dims(mask, axis=-1)
+        x = np.concatenate([img, mask], axis=-1)
 
-        # Crop to mask bounding box (same as training)
-        if mask.max() > 0:
-            ys, xs = np.where(mask > 0)
-            y_min, y_max = ys.min(), ys.max()
-            x_min, x_max = xs.min(), xs.max()
-            img = img[y_min : y_max + 1, x_min : x_max + 1, :]
-            mask = mask[y_min : y_max + 1, x_min : x_max + 1]
-
-        # Normalize mask to [0, 1], broadcast to 3 channels, and multiply
-        if mask.max() > 0:
-            mask = mask / 255.0
-        mask_3ch = np.repeat(mask[..., None], 3, axis=-1)
-        x = img * mask_3ch
+        # Convert to tensor manually (ToTensor doesn't handle 4 channels)
+        x = torch.from_numpy(x).permute(2, 0, 1).float() / 255.0  # HWC -> CHW, normalize
 
         if self.transform:
             x = self.transform(x)
@@ -56,10 +47,10 @@ class TestMaskedImageDataset(Dataset):
         return x, fname
 
 
-class EfficientNetB0_4ch(torch.nn.Module):
+class EfficientNetV2S_4ch(torch.nn.Module):
     def __init__(self, num_classes):
         super().__init__()
-        self.base = efficientnet_b0(weights=None)
+        self.base = efficientnet_v2_s(weights=None)
 
         old_conv = self.base.features[0][0]
         new_conv = torch.nn.Conv2d(
@@ -80,7 +71,10 @@ class EfficientNetB0_4ch(torch.nn.Module):
         self.base.features[0][0] = new_conv
 
         in_features = self.base.classifier[1].in_features
-        self.base.classifier[1] = torch.nn.Linear(in_features, num_classes)
+        self.base.classifier = torch.nn.Sequential(
+            torch.nn.Dropout(p=0.3, inplace=True),
+            torch.nn.Linear(in_features, num_classes)
+        )
 
     def forward(self, x):
         return self.base(x)
@@ -103,7 +97,7 @@ def parse_args():
     parser.add_argument("--mask-dir", type=str, default="data/test_data", help="Directory with mask images")
     parser.add_argument("--output-csv", type=str, default="submission.csv", help="Path to save predictions CSV")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size for inference")
-    parser.add_argument("--img-size", type=int, default=224, help="Image resize size")
+    parser.add_argument("--img-size", type=int, default=384, help="Image resize size - EfficientNetV2-S uses 384x384")
 
     return parser.parse_args()
 
@@ -116,7 +110,7 @@ def main():
     idx_to_label = load_label_mapping(args.train_csv)
     num_classes = len(idx_to_label)
 
-    model = EfficientNetB0_4ch(num_classes)
+    model = EfficientNetV2S_4ch(num_classes)
     state = torch.load(args.checkpoint, map_location="cpu")
 
     if "state_dict" in state:
@@ -128,7 +122,6 @@ def main():
     model.eval()
 
     transform = T.Compose([
-        T.ToTensor(),
         T.Resize((args.img_size, args.img_size)),
     ])
 
