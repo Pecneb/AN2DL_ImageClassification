@@ -211,3 +211,9 @@ data/train_data
 data/test_data
 data/train_data_filtered
 data/train_data_preprocessed
+
+# Lightning logs
+tb_logs/
+
+# Mac OS files
+.DS_Store
